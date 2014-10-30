@@ -1,0 +1,370 @@
+<?php
+/**
+ * @file
+ * limelight_purge.module
+ */
+
+/**
+ * Denotes the version of Limelight Purge module.
+ */
+define('LIMELIGHT_PURGE_VERSION', '7.x-1.x-dev');
+
+/**
+ * Denotes the watchdog type.
+ */
+define('LIMELIGHT_PURGE_WATCHDOG_TYPE', 'limelight_purge');
+
+/**
+ * The Limelight API url.
+ */
+define('LIMELIGHT_PURGE_LLNW_URL', 'http://control.llnw.com');
+
+/**
+ * Denotes HTTP POST method.
+ */
+define('LIMELIGHT_PURGE_HTTP_METHOD_POST', 'POST');
+
+/**
+ * Denotes HTTP GET method.
+ */
+define('LIMELIGHT_PURGE_HTTP_METHOD_GET', 'GET');
+
+/**
+ * Denotes the Limelight API endpoint for purge.
+ */
+define('LIMELIGHT_PURGE_API_ENDPOINT_PURGE', 'purge');
+
+/**
+ * Denotes the Limelight purge type invalidate.
+ */
+define('LIMELIGHT_PURGE_LIMELIGHT_PURGE_TYPE_INVALIDATE', 'invalidate');
+
+/**
+ * Denotes the Limelight purge type delete.
+ */
+define('LIMELIGHT_PURGE_LIMELIGHT_PURGE_TYPE_DELETE', 'delete');
+
+/**
+ * Implements hook_menu().
+ */
+function limelight_purge_menu() {
+  $items = array();
+  $items['admin/config/system/limelight-purge'] = array(
+    'title' => 'Limelight purge',
+    'description' => 'Configure and manage Limelight Purge settings.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('limelight_purge_settings_form'),
+    'access arguments' => array('administer limelight purge'),
+    'file' => 'limelight_purge.admin.inc',
+    'file path' => drupal_get_path('module', 'limelight_purge'),
+  );
+  $items['admin/config/system/limelight-purge/settings'] = array(
+    'title' => 'Settings',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_permission().
+ */
+function limelight_purge_permission() {
+  return array(
+    'administer limelight purge' => array(
+      'title' => t('Administer Limelight Purge'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_cron_queue_info().
+ */
+function limelight_purge_cron_queue_info() {
+  $queues = array();
+  $queues['limelight_purge_queue'] = array(
+    'worker callback' => 'limelight_purge_queue_worker',
+    'time' => 120,
+  );
+  return $queues;
+}
+
+/**
+ * Limelight purge queue worker, processes individual queue items.
+ *
+ * @param array $item
+ *   A single queue item to process.
+ */
+function limelight_purge_queue_worker($item) {
+  if (!empty($item['urls'])) {
+    limelight_purge_limelight_api_purge_request($item['urls']);
+  }
+}
+
+/**
+ * Returns the Limelight Purge queue.
+ *
+ * @return DrupalReliableQueueInterface
+ *   The queue object.
+ */
+function limelight_purge_queue() {
+  return DrupalQueue::get('limelight_purge_queue', TRUE);
+}
+
+/**
+ * Implements hook_expire_cache().
+ */
+function limelight_purge_expire_cache($urls, $wildcards, $object_type, $object) {
+  $queue = limelight_purge_queue();
+  $queue->createItem(array(
+    'urls' => $urls,
+  ));
+}
+
+/**
+ * Adds a watchdog entry specifically for Limelight Purge module.
+ *
+ * @param int $severity
+ *   The severity level of the entry.
+ * @param string $message
+ *   The message.
+ * @param array $variables
+ *   An array of variables.
+ */
+function limelight_purge_log($severity, $message, array $variables = array()) {
+  watchdog(LIMELIGHT_PURGE_WATCHDOG_TYPE, $message, $variables, $severity);
+}
+
+/**
+ * Returns the Limelight API shared key.
+ *
+ * @return stringrena
+ *   The configured shared key, otherwise an empty string.
+ */
+function limelight_purge_limelight_api_shared_key() {
+  return variable_get('limelight_purge_limelight_api_shared_key', '');
+}
+
+/**
+ * Returns the Limelight API username.
+ *
+ * @return string
+ *   The configured username if specified, otherwise an empty string.
+ */
+function limelight_purge_limelight_api_username() {
+  return variable_get('limelight_purge_limelight_api_username', '');
+}
+
+/**
+ * Returns the Limelight API shortname.
+ *
+ * @return string
+ *   The configured shortname if specified, otherwise an empty string.
+ */
+function limelight_purge_limelight_api_shortname() {
+  return variable_get('limelight_purge_limelight_api_shortname', '');
+}
+
+/**
+ * Returns the Limelight API purge request purge type.
+ *
+ * @return string
+ *   The purge type identifier.
+ */
+function limelight_purge_limelight_purge_type() {
+  return variable_get('limelight_purge_limelight_purge_type', LIMELIGHT_PURGE_LIMELIGHT_PURGE_TYPE_INVALIDATE);
+}
+
+/**
+ * Returns a boolean indicating whether or not the queue is processed on cron.
+ *
+ * @return bool
+ *   Returns TRUE if the queue should be processed on cron, otherwise FALSE.
+ */
+function limelight_purge_queue_process_on_cron() {
+  return variable_get('limelight_purge_queue_process_on_cron', 1);
+}
+
+/**
+ * Returns the default timeout (in seconds) for HTTP requests.
+ *
+ * @return int
+ *   Returns an integer value of seconds. Default value is 30.
+ */
+function limelight_purge_limelight_api_request_timeout() {
+  return 30;
+}
+
+/**
+ * Returns the Limelight API endpoint information.
+ *
+ * @param string $endpoint
+ *   The endpoint identifier to retrieve a single endpoint if it exists.
+ *
+ * @return mixed
+ *   Returns an array of all endpoint information if no endpoint identifier is
+ *   specified. Should an endpoint identifier be specified and it exists, the
+ *   endpoint specific information is returned otherwise NULL.
+ */
+function limelight_purge_limelight_api_endpoint_info($endpoint = NULL) {
+  $info = _limelight_purge_limelight_api_endpoint_info();
+  return $endpoint ? (isset($info[$endpoint]) ? $info[$endpoint] : NULL) : $info;
+}
+
+/**
+ * Verifies if API requests are allowed and requirements are met.
+ *
+ * @return bool
+ *   Returns TRUE if requests are allowed, otherwise FALSE.
+ */
+function limelight_purge_limelight_api_requirements() {
+  return drupal_check_module('limelight_purge');
+}
+
+/**
+ * Executes a Limelight API Purge Request Create call.
+ *
+ * @param array $urls
+ *   An array of URLs to purge.
+ *
+ * @return bool
+ *   Returns TRUE if successful, otherwise FALSE.
+ */
+function limelight_purge_limelight_api_purge_request(array $urls = array()) {
+  if (empty($urls)) {
+    return FALSE;
+  }
+
+  $parameters = array('entries' => array());
+  $purge_type_delete = LIMELIGHT_PURGE_LIMELIGHT_PURGE_TYPE_DELETE == limelight_purge_limelight_purge_type() ? TRUE : FALSE;
+  foreach ($urls as $url) {
+    $parameters['entries'][] = array(
+      'shortname' => limelight_purge_limelight_api_shortname(),
+      'url' => $url,
+      'regex' => FALSE,
+      'delete' => $purge_type_delete,
+    );
+  }
+
+  return limelight_purge_limelight_api_request(LIMELIGHT_PURGE_API_ENDPOINT_PURGE, $parameters);
+}
+
+/**
+ * Performs a single Limelight API request.
+ *
+ * @param string $endpoint
+ *   The endpoint identifier (e.g. LIMELIGHT_PURGE_API_ENDPOINT_PURGE).
+ * @param array $parameters
+ *   An array of parameters for the body of the request.
+ * @param array $headers
+ *   An array of HTTP headers which will be used along with the default.
+ *
+ * @return bool
+ *   Returns TRUE if the purge request was made successfully, otherwise FALSE.
+ */
+function limelight_purge_limelight_api_request($endpoint, array $parameters = array(), array $headers = array()) {
+  if (!limelight_purge_limelight_api_requirements()) {
+    limelight_purge_log(WATCHDOG_CRITICAL, 'Limelight purge is unable to perform API requests due to not meeting the requirements required.');
+    return FALSE;
+  }
+
+  $endpoint_info = limelight_purge_limelight_api_endpoint_info($endpoint);
+  if (!$endpoint || $endpoint_info) {
+    limelight_purge_log(WATCHDOG_DEBUG, 'The specified endpoint is invalid and or not specified. Endpoint %endpoint.', array('%endpoint' => $endpoint));
+    return FALSE;
+  }
+
+  $request_uri_parts = array(
+    'host' => LIMELIGHT_PURGE_LLNW_URL,
+    'endpoint' => $endpoint_info['endpoint'],
+    'endpoint_version' => $endpoint_info['version'],
+    'endpoint_path' => $endpoint_info['path'],
+    'parameters' => '',
+  );
+
+  $timestamp = number_format(time() * 1000, 0, '.', '');
+
+  $security_token_hash_params = $request_uri_parts + array(
+    'timestamp' => $timestamp,
+    'data' => '',
+  );
+
+  $data = NULL;
+  if (LIMELIGHT_PURGE_HTTP_METHOD_POST == $endpoint_info['method']) {
+    $data = drupal_json_encode($parameters);
+    $security_token_hash_params['data'] = $data;
+  }
+  else {
+    $query_string = drupal_http_build_query($parameters);
+    $security_token_hash_params['parameters'] = '?' . $query_string;
+    $request_uri_parts['parameters'] = $query_string;
+  }
+
+  $security_token_hash = _limelight_purge_limelight_api_generate_hash($security_token_hash_params);
+
+  $request_uri_params = $request_uri_parts['parameters'];
+  unset($request_uri_parts['parameters']);
+
+  $request_uri = implode('/', $request_uri_parts);
+  if (!empty($request_uri_params)) {
+    $request_uri = $request_uri . '?' . $request_uri_params;
+  }
+
+  $headers += array(
+    'X-LLNW-Security-Timestamp' => $timestamp,
+    'X-LLNW-Security-Principal' => limelight_purge_limelight_api_username(),
+    'X-LLNW-Security-Token' => $security_token_hash,
+    'Content-Type' => 'application/json'
+  );
+
+  $request_options = array(
+    'headers' => $headers,
+    'method' => $endpoint_info['method'],
+    'max_redirects' => 0,
+    'timeout' => limelight_purge_limelight_api_request_timeout(),
+    'data' => $data,
+  );
+
+  $response = drupal_http_request($request_uri, $request_options);
+
+  // TODO: Revise this implementation as further endpoints are added.
+  switch ($response->code) {
+    case 200:
+    case 201:
+    case 202:
+      return TRUE;
+  }
+
+  return FALSE;
+}
+
+/**
+ * Generates the security token hash required by Limelight CDN API.
+ *
+ * @param array $data
+ *   An array of data which is concatenated for generating the hash.
+ *
+ * @return string
+ *   The hash used as a security token.
+ */
+function _limelight_purge_limelight_api_generate_hash(array $data) {
+  $data_key = pack('H*', limelight_purge_limelight_api_shared_key());
+  return hash_hmac('sha256', implode('', $data), $data_key);
+}
+
+/**
+ * Returns an array of Limelight API endpoint information.
+ *
+ * @return array
+ *   An array of information, keyed by endpoint identifier.
+ */
+function _limelight_purge_limelight_api_endpoint_info() {
+  return array(
+    LIMELIGHT_PURGE_API_ENDPOINT_PURGE => array(
+      'method' => LIMELIGHT_PURGE_HTTP_METHOD_POST,
+      'endpoint' => 'purge-api',
+      'version' => 'v1',
+      'path' => 'request',
+    ),
+  );
+}

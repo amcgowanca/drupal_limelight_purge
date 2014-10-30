@@ -1,0 +1,7 @@
+name = Limelight Purge
+description = Purges cached URLs on the Limelight CDN via RESTFul API.
+package = Limelight Purge
+core = 7.x
+version = LIMELIGHT_PURGE_VERSION
+
+dependencies[] = expire (>=2.0-rc2)

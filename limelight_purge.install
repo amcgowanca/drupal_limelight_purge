@@ -1,0 +1,52 @@
+<?php
+/**
+ * @file
+ * limelight_purge.install
+ */
+
+/**
+ * Implements hook_install().
+ */
+function limelight_purge_install() {
+  variable_set('limelight_purge_limelight_api_shared_key', '');
+  variable_set('limelight_purge_limelight_api_username', '');
+  variable_set('limelight_purge_limelight_api_shortname', '');
+  variable_set('limelight_purge_queue_process_on_cron', 1);
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function limelight_purge_uninstall() {
+  variable_del('limelight_purge_limelight_api_shared_key');
+  variable_del('limelight_purge_limelight_api_username');
+  variable_del('limelight_purge_limelight_api_shortname');
+  variable_del('limelight_purge_queue_process_on_cron');
+
+  module_load_include('module', 'limelight_purge');
+  $queue = limelight_purge_queue();
+  $queue->deleteQueue();
+}
+
+/**
+ * Implements hook_requirements().
+ */
+function limelight_purge_requirements($phase) {
+  $requirements = array();
+  if ('runtime' === $phase) {
+    $t = get_t();
+    $requirements['limelight_api_auth'] = array(
+      'title' => $t('Limelight Purge API'),
+      'description' => $t('Limelight Purge module requires that the Limelight CDN Username, Shortname and Shared Key are configured for purging of URLs to occur.'),
+      'severity' => REQUIREMENT_OK,
+      'value' => $t('OK'),
+    );
+
+    module_load_include('module', 'limelight_purge');
+    if (!limelight_purge_limelight_api_username() || !limelight_purge_limelight_api_shortname() || !limelight_purge_limelight_api_shared_key()) {
+      $requirements['limelight_api_auth']['value'] = $t('Missing configuration');
+      $requirements['limelight_api_auth']['severity'] = REQUIREMENT_ERROR;
+    }
+  }
+  return $requirements;
+}
