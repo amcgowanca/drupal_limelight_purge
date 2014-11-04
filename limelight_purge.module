@@ -115,6 +115,17 @@ function limelight_purge_queue() {
  * Implements hook_expire_cache().
  */
 function limelight_purge_expire_cache($urls, $wildcards, $object_type, $object) {
+  $urls = array_values($urls);
+  // Ensure that we are only creating a queue item with absolute urls.
+  foreach ($urls as $k => $url) {
+    $url = url($url, array('absolute' => TRUE));
+    $urls[$k] = $url;
+  }
+
+  if (limelight_purge_watchdog_debug()) {
+    limelight_purge_log(WATCHDOG_DEBUG, 'Creating limelight purge queue item for the following urls: @urls', array('@urls' => print_r($urls, TRUE)));
+  }
+
   $queue = limelight_purge_queue();
   $queue->createItem(array(
     'urls' => $urls,
@@ -186,6 +197,16 @@ function limelight_purge_queue_process_on_cron() {
 }
 
 /**
+ * Returns a boolean indicating debug related logging is enabled.
+ *
+ * @return bool
+ *   Returns a boolean. Default value is FALSE.
+ */
+function limelight_purge_watchdog_debug() {
+  return (bool) variable_get('limelight_purge_watchdog_debug', FALSE);
+}
+
+/**
  * Returns the default timeout (in seconds) for HTTP requests.
  *
  * @return int
@@ -218,6 +239,7 @@ function limelight_purge_limelight_api_endpoint_info($endpoint = NULL) {
  *   Returns TRUE if requests are allowed, otherwise FALSE.
  */
 function limelight_purge_limelight_api_requirements() {
+  require_once DRUPAL_ROOT . '/includes/install.inc';
   return drupal_check_module('limelight_purge');
 }
 
@@ -269,7 +291,7 @@ function limelight_purge_limelight_api_request($endpoint, array $parameters = ar
   }
 
   $endpoint_info = limelight_purge_limelight_api_endpoint_info($endpoint);
-  if (!$endpoint || $endpoint_info) {
+  if (!$endpoint || !$endpoint_info) {
     limelight_purge_log(WATCHDOG_DEBUG, 'The specified endpoint is invalid and or not specified. Endpoint %endpoint.', array('%endpoint' => $endpoint));
     return FALSE;
   }
@@ -284,7 +306,13 @@ function limelight_purge_limelight_api_request($endpoint, array $parameters = ar
 
   $timestamp = number_format(time() * 1000, 0, '.', '');
 
-  $security_token_hash_params = $request_uri_parts + array(
+  $security_token_hash_params = array(
+    'method' => $endpoint_info['method'],
+    'host' => LIMELIGHT_PURGE_LLNW_URL,
+    'endpoint' => '/' . $endpoint_info['endpoint'],
+    'endpoint_version' => '/' . $endpoint_info['version'],
+    'endpoint_path' => '/' . $endpoint_info['path'],
+    'parameters' => '',
     'timestamp' => $timestamp,
     'data' => '',
   );
@@ -327,6 +355,12 @@ function limelight_purge_limelight_api_request($endpoint, array $parameters = ar
 
   $response = drupal_http_request($request_uri, $request_options);
 
+  if (limelight_purge_watchdog_debug()) {
+    limelight_purge_log(WATCHDOG_DEBUG, 'Request URI: @request_uri', array('@request_uri' => $request_uri));
+    limelight_purge_log(WATCHDOG_DEBUG, 'Request Options: @request_options', array('@request_options' => print_r($request_options, TRUE)));
+    limelight_purge_log(WATCHDOG_DEBUG, 'Response: @response', array('@response' => print_r($response, TRUE)));
+  }
+
   // TODO: Revise this implementation as further endpoints are added.
   switch ($response->code) {
     case 200:
@@ -349,7 +383,13 @@ function limelight_purge_limelight_api_request($endpoint, array $parameters = ar
  */
 function _limelight_purge_limelight_api_generate_hash(array $data) {
   $data_key = pack('H*', limelight_purge_limelight_api_shared_key());
-  return hash_hmac('sha256', implode('', $data), $data_key);
+  $hash = hash_hmac('sha256', implode('', $data), $data_key);
+
+  if (limelight_purge_watchdog_debug()) {
+    limelight_purge_log(WATCHDOG_DEBUG, 'Hash generation: datakey = @datakey, data = @data, hash = @hash, @data_raw', array('@datakey' => $data_key, '@data' => implode('', $data), '@data_raw' => print_r($data, TRUE), '@hash' => $hash));
+  }
+
+  return $hash;
 }
 
 /**
