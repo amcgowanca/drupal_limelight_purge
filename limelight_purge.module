@@ -118,7 +118,7 @@ function limelight_purge_expire_cache($urls, $wildcards, $object_type, $object) 
   $urls = array_values($urls);
   // Ensure that we are only creating a queue item with absolute urls.
   foreach ($urls as $k => $url) {
-    $url = url($url, array('absolute' => TRUE));
+    $url = url($url, array('absolute' => TRUE, 'alias' => TRUE));
     $urls[$k] = $url;
   }
 
