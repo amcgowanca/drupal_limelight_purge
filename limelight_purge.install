@@ -12,6 +12,8 @@ function limelight_purge_install() {
   variable_set('limelight_purge_limelight_api_username', '');
   variable_set('limelight_purge_limelight_api_shortname', '');
   variable_set('limelight_purge_queue_process_on_cron', 1);
+  variable_set('limelight_purge_queue_ignored_paths', '');
+  variable_set('queue_class_limelight_purge_queue', 'LimelightPurgeQueue');
 }
 
 /**
@@ -22,6 +24,8 @@ function limelight_purge_uninstall() {
   variable_del('limelight_purge_limelight_api_username');
   variable_del('limelight_purge_limelight_api_shortname');
   variable_del('limelight_purge_queue_process_on_cron');
+  variable_del('limelight_purge_queue_ignored_paths');
+  variable_del('queue_class_limelight_purge_queue');
 
   module_load_include('module', 'limelight_purge');
   $queue = limelight_purge_queue();
@@ -49,4 +53,46 @@ function limelight_purge_requirements($phase) {
     }
   }
   return $requirements;
+}
+
+/**
+ * Performs bulk update of all serialized URLs with singular implementation.
+ */
+function limelight_purge_update_7001() {
+  variable_set('limelight_purge_queue_ignored_paths', '');
+  variable_set('queue_class_limelight_purge_queue', 'LimelightPurgeQueue');
+
+  $urls = array();
+  $item_ids = array();
+  $query = db_select('queue', 'q')
+    ->fields('q')
+    ->condition('name', 'limelight_purge_queue')
+    ->execute();
+  while ($item = $query->fetchObject()) {
+    $item->data = @unserialize($item->data);
+    if (is_array($item->data)) {
+      $item_ids[] = $item->id;
+      if (!empty($item->data['urls'])) {
+        foreach ($item->data['urls'] as $url) {
+          if (!in_array($url, $urls)) {
+            $urls[] = $url;
+          }
+        }
+      }
+    }
+  }
+
+  if (!empty($item_ids)) {
+    db_delete('queue')
+      ->condition('name', 'limelight_purge_queue')
+      ->condition('id', $item_ids, 'IN')
+      ->execute();
+
+    $queue = limelight_purge_queue();
+    foreach ($urls as $url) {
+      if (!$queue->itemExists($url)) {
+        $queue->createItem($url);
+      }
+    }
+  }
 }

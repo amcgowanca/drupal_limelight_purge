@@ -7,7 +7,7 @@
 /**
  * Denotes the version of Limelight Purge module.
  */
-define('LIMELIGHT_PURGE_VERSION', '7.x-1.x-dev');
+define('LIMELIGHT_PURGE_VERSION', '7.x-1.1');
 
 /**
  * Denotes the watchdog type.
@@ -90,14 +90,14 @@ function limelight_purge_cron_queue_info() {
 }
 
 /**
- * Limelight purge queue worker, processes individual queue items.
+ * Limelight purge queue worker, processes individual queue item's url.
  *
- * @param array $item
- *   A single queue item to process.
+ * @param string $url
+ *   The url to process.
  */
-function limelight_purge_queue_worker($item) {
-  if (!empty($item['urls'])) {
-    limelight_purge_limelight_api_purge_request($item['urls']);
+function limelight_purge_queue_worker($url) {
+  if (!empty($url)) {
+    limelight_purge_limelight_api_purge_request($url);
   }
 }
 
@@ -115,21 +115,16 @@ function limelight_purge_queue() {
  * Implements hook_expire_cache().
  */
 function limelight_purge_expire_cache($urls, $wildcards, $object_type, $object) {
+  $queue = limelight_purge_queue();
   $urls = array_values($urls);
   // Ensure that we are only creating a queue item with absolute urls.
   foreach ($urls as $k => $url) {
     $url = url($url, array('absolute' => TRUE, 'alias' => TRUE));
-    $urls[$k] = $url;
+    if (!$queue->itemExists($url)) {
+      limelight_purge_log(WATCHDOG_DEBUG, 'Creating limelight purge queue item for the following url: @url', array('@url' => $url));
+      $queue->createItem($url);
+    }
   }
-
-  if (limelight_purge_watchdog_debug()) {
-    limelight_purge_log(WATCHDOG_DEBUG, 'Creating limelight purge queue item for the following urls: @urls', array('@urls' => print_r($urls, TRUE)));
-  }
-
-  $queue = limelight_purge_queue();
-  $queue->createItem(array(
-    'urls' => $urls,
-  ));
 }
 
 /**
@@ -207,6 +202,16 @@ function limelight_purge_watchdog_debug() {
 }
 
 /**
+ * Returns a string representing the paths to ignore during purge.
+ *
+ * @return string
+ *   The paths to ignore. Each unique path on its own line.
+ */
+function limelight_purge_queue_ignored_paths() {
+  return variable_get('limelight_purge_queue_ignored_paths', '');
+}
+
+/**
  * Returns the default timeout (in seconds) for HTTP requests.
  *
  * @return int
@@ -246,27 +251,24 @@ function limelight_purge_limelight_api_requirements() {
 /**
  * Executes a Limelight API Purge Request Create call.
  *
- * @param array $urls
- *   An array of URLs to purge.
+ * @param string $url
+ *   The URL to purge.
  *
  * @return bool
  *   Returns TRUE if successful, otherwise FALSE.
  */
-function limelight_purge_limelight_api_purge_request(array $urls = array()) {
-  if (empty($urls)) {
+function limelight_purge_limelight_api_purge_request($url) {
+  if (empty($url)) {
     return FALSE;
   }
 
-  $parameters = array('entries' => array());
   $purge_type_delete = LIMELIGHT_PURGE_LIMELIGHT_PURGE_TYPE_DELETE == limelight_purge_limelight_purge_type() ? TRUE : FALSE;
-  foreach ($urls as $url) {
-    $parameters['entries'][] = array(
-      'shortname' => limelight_purge_limelight_api_shortname(),
-      'url' => $url,
-      'regex' => FALSE,
-      'delete' => $purge_type_delete,
-    );
-  }
+  $parameters = array('entries' => array(
+    'shortname' => limelight_purge_limelight_api_shortname(),
+    'url' => $url,
+    'regex' => FALSE,
+    'delete' => $purge_type_delete,
+  ));
 
   return limelight_purge_limelight_api_request(LIMELIGHT_PURGE_API_ENDPOINT_PURGE, $parameters);
 }
