@@ -4,4 +4,6 @@ package = Limelight Purge
 core = 7.x
 version = LIMELIGHT_PURGE_VERSION
 
+files[] = includes/LimelightPurgeQueue.inc
+
 dependencies[] = expire (>=2.0-rc2)
