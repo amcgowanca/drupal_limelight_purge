@@ -74,7 +74,7 @@ function limelight_purge_settings_form($form, $form_state) {
     '#type' => 'textarea',
     '#title' => t('Ignored paths'),
     '#description' => t('Specify paths to ignore during purge. Enter one path per line. The "*" character is a wildcard. Example path %node-wildcard would result in all node viewing paths not being purged.', array('%node-wildcard' => 'node/*')),
-    '#default_value' > limelight_purge_queue_ignored_paths(),
+    '#default_value' => limelight_purge_queue_ignored_paths(),
   );
   return system_settings_form($form);
 }

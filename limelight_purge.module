@@ -116,9 +116,13 @@ function limelight_purge_queue() {
  */
 function limelight_purge_expire_cache($urls, $wildcards, $object_type, $object) {
   $queue = limelight_purge_queue();
-  $urls = array_values($urls);
+  $ignored_paths = limelight_purge_queue_ignored_paths();
   // Ensure that we are only creating a queue item with absolute urls.
-  foreach ($urls as $k => $url) {
+  foreach ($urls as $path => $url) {
+    if (!empty($ignored_paths) && drupal_match_path($path, $ignored_paths)) {
+      continue;
+    }
+
     $url = url($url, array('absolute' => TRUE, 'alias' => TRUE));
     if (!$queue->itemExists($url)) {
       limelight_purge_log(WATCHDOG_DEBUG, 'Creating limelight purge queue item for the following url: @url', array('@url' => $url));
