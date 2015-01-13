@@ -267,12 +267,13 @@ function limelight_purge_limelight_api_purge_request($url) {
   }
 
   $purge_type_delete = LIMELIGHT_PURGE_LIMELIGHT_PURGE_TYPE_DELETE == limelight_purge_limelight_purge_type() ? TRUE : FALSE;
-  $parameters = array('entries' => array(
+  $parameters = array('entries' => array());
+  $parameters['entries'][] = array(
     'shortname' => limelight_purge_limelight_api_shortname(),
     'url' => $url,
     'regex' => FALSE,
     'delete' => $purge_type_delete,
-  ));
+  );
 
   return limelight_purge_limelight_api_request(LIMELIGHT_PURGE_API_ENDPOINT_PURGE, $parameters);
 }
