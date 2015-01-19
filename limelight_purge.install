@@ -71,7 +71,7 @@ function limelight_purge_update_7001() {
   while ($item = $query->fetchObject()) {
     $item->data = @unserialize($item->data);
     if (is_array($item->data)) {
-      $item_ids[] = $item->id;
+      $item_ids[] = $item->item_id;
       if (!empty($item->data['urls'])) {
         foreach ($item->data['urls'] as $url) {
           if (!in_array($url, $urls)) {
@@ -85,7 +85,7 @@ function limelight_purge_update_7001() {
   if (!empty($item_ids)) {
     db_delete('queue')
       ->condition('name', 'limelight_purge_queue')
-      ->condition('id', $item_ids, 'IN')
+      ->condition('item_id', $item_ids, 'IN')
       ->execute();
 
     $queue = limelight_purge_queue();
