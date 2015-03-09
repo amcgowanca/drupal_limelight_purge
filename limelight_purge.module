@@ -115,21 +115,37 @@ function limelight_purge_queue() {
  * Implements hook_expire_cache().
  */
 function limelight_purge_expire_cache($urls, $wildcards, $object_type, $object) {
-  $queue = limelight_purge_queue();
-  $ignored_paths = limelight_purge_queue_ignored_paths();
-  // Ensure that we are only creating a queue item with absolute urls.
   foreach ($urls as $path => $url) {
-    if (!empty($ignored_paths) && drupal_match_path($path, $ignored_paths)) {
-      continue;
-    }
-
-    $url = url($url, array('absolute' => TRUE, 'alias' => TRUE));
-    if (!$queue->itemExists($url)) {
-      limelight_purge_log(WATCHDOG_DEBUG, 'Creating limelight purge queue item for the following url: @url', array('@url' => $url));
-      $queue->createItem($url);
-    }
+    limelight_purge_queue_add($path);
   }
 }
+
+/**
+ * Single function for adding a new path to the purge queue.
+ *
+ * @param string $path
+ *   The path to add to the queue.
+ *
+ * @return bool
+ *   Returns TRUE if the path was added, otherwise returns FALSE.
+ */
+function limelight_purge_queue_add($path) {
+  $ignored_paths = limelight_purge_queue_ignored_paths();
+  if (!empty($ignored_paths) && drupal_match_path($path, $ignored_paths)) {
+    return FALSE;
+  }
+
+  $url = url($path, array('absolute' => TRUE, 'alias' => TRUE));
+  $queue = limelight_purge_queue();
+  if ($queue->itemExists($url)) {
+    return FALSE;
+  }
+
+  limelight_purge_log(WATCHDOG_DEBUG, 'Creating limelight purge queue item for the following url: @url', array('@url' => $url));
+  $queue->createItem($url);
+  return TRUE;
+}
+
 
 /**
  * Adds a watchdog entry specifically for Limelight Purge module.
